@@ -1,0 +1,506 @@
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Radar Działek — automat, który szuka za mnie</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath fill='%23ff5a3c' d='M12 2C7.6 2 4 5.6 4 10c0 6 8 12 8 12s8-6 8-12c0-4.4-3.6-8-8-8zm0 11a3 3 0 1 1 0-6 3 3 0 0 1 0 6z'/%3E%3C/svg%3E">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Sora:wght@400;600;700;800&family=Work+Sans:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg: #f6f7fb;
+    --surface: #ffffff;
+    --surface-2: #eef0f6;
+    --ink: #10141c;
+    --ink-soft: #565f72;
+    --ink-faint: #99a0b0;
+    --accent: #ff5a3c;
+    --accent-ink: #ffffff;
+    --accent-soft: #ffe7e0;
+    --line: #e4e7ee;
+    --good: #1a8f5e;
+    --good-soft: #e2f4ec;
+    --warn: #b8811c;
+    --warn-soft: #faf1de;
+    --bad: #7c8397;
+    --bad-soft: #eef0f4;
+    --shadow: 0 1px 2px rgba(16,20,28,.04), 0 12px 28px -8px rgba(16,20,28,.10);
+    --radius: 16px;
+  }
+  @media (prefers-color-scheme: dark){
+    :root{
+      --bg: #0c0f16;
+      --surface: #131826;
+      --surface-2: #1a2032;
+      --ink: #eef1f7;
+      --ink-soft: #a6adbe;
+      --ink-faint: #626a7d;
+      --accent: #ff7a5c;
+      --accent-ink: #14100e;
+      --accent-soft: #2a1a15;
+      --line: #232a3d;
+      --good: #3fcf95;
+      --good-soft: #10261e;
+      --warn: #e3b054;
+      --warn-soft: #2a2313;
+      --bad: #5b6379;
+      --bad-soft: #171c29;
+      --shadow: 0 1px 2px rgba(0,0,0,.3), 0 16px 36px -10px rgba(0,0,0,.5);
+    }
+  }
+
+  *{ box-sizing: border-box; }
+  html{ scroll-behavior: smooth; }
+  body{
+    margin:0;
+    background: var(--bg);
+    color: var(--ink);
+    font-family: 'Work Sans', system-ui, sans-serif;
+    line-height: 1.55;
+    -webkit-font-smoothing: antialiased;
+  }
+  .wrap{ max-width: 1040px; margin: 0 auto; padding: 0 24px; }
+  h1,h2,h3{ font-family: 'Sora', system-ui, sans-serif; text-wrap: balance; margin:0; }
+  .mono{ font-family: 'JetBrains Mono', ui-monospace, monospace; font-variant-numeric: tabular-nums; }
+  a{ color: inherit; }
+  button{ font-family: inherit; }
+
+  /* reveal-on-scroll */
+  .reveal{ opacity: 0; transform: translateY(18px); transition: opacity .6s ease, transform .6s ease; }
+  .reveal.in{ opacity: 1; transform: translateY(0); }
+  @media (prefers-reduced-motion: reduce){
+    .reveal{ opacity:1; transform:none; transition:none; }
+    html{ scroll-behavior:auto; }
+  }
+
+  /* ---------- NAV ---------- */
+  nav{
+    position: sticky; top:0; z-index: 20;
+    background: color-mix(in srgb, var(--bg) 86%, transparent);
+    backdrop-filter: blur(10px);
+    border-bottom: 1px solid var(--line);
+  }
+  nav .wrap{ display:flex; align-items:center; justify-content:space-between; height: 64px; }
+  .brand{ display:flex; align-items:center; gap:10px; font-family:'Sora',sans-serif; font-weight:700; font-size:1.05rem; }
+  .brand .dot{ width:9px; height:9px; border-radius:50%; background: var(--accent); box-shadow: 0 0 0 4px var(--accent-soft); }
+  .live{
+    display:flex; align-items:center; gap:7px;
+    font-family:'JetBrains Mono',monospace; font-size:.72rem; color: var(--ink-soft);
+    padding: 6px 12px; border:1px solid var(--line); border-radius: 999px;
+  }
+  .live .pulse{ width:6px; height:6px; border-radius:50%; background: var(--good); animation: pulse 2s infinite; }
+  @keyframes pulse{ 0%,100%{ opacity:1; } 50%{ opacity:.35; } }
+  @media (prefers-reduced-motion: reduce){ .live .pulse{ animation:none; } }
+
+  /* loading state */
+  .loading-msg{ text-align: center; padding: 48px 0; color: var(--ink-soft); }
+  .loader{ display: inline-block; width: 32px; height: 32px; border: 3px solid var(--line); border-top-color: var(--accent); border-radius: 50%; animation: spin 0.8s linear infinite; margin-bottom: 16px; }
+  @keyframes spin{ to { transform: rotate(360deg); } }
+
+  /* ---------- HERO ---------- */
+  .hero{ padding: 84px 0 56px; }
+  .eyebrow{
+    font-family:'JetBrains Mono',monospace; font-size:.78rem; letter-spacing:.06em;
+    color: var(--accent); text-transform: uppercase; margin-bottom: 18px;
+  }
+  .hero h1{
+    font-size: clamp(2.3rem, 5vw, 3.4rem); font-weight: 800; letter-spacing: -0.02em;
+    max-width: 16ch; color: var(--ink);
+  }
+  .hero p.lede{ max-width: 58ch; font-size: 1.12rem; color: var(--ink-soft); margin-top: 20px; }
+
+  .stat-row{ display:grid; grid-template-columns: repeat(4,1fr); gap: 14px; margin-top: 48px; }
+  .stat{
+    background: var(--surface); border:1px solid var(--line); border-radius: var(--radius);
+    padding: 20px 18px; box-shadow: var(--shadow);
+  }
+  .stat .n{ font-family:'Sora',sans-serif; font-size: 2.1rem; font-weight: 800; color: var(--ink); }
+  .stat .l{ margin-top: 6px; font-size: .82rem; color: var(--ink-soft); }
+
+  /* ---------- SECTION SHELL ---------- */
+  section{ padding: 64px 0; }
+  .section-head{ margin-bottom: 34px; display:flex; align-items:flex-end; justify-content:space-between; gap: 20px; flex-wrap: wrap; }
+  .section-head h2{ font-size: 1.9rem; font-weight: 800; letter-spacing: -0.01em; }
+  .section-head p{ color: var(--ink-soft); font-size: 1rem; margin-top: 8px; max-width: 52ch; }
+
+  /* ---------- FEATURED ---------- */
+  .featured{
+    background: linear-gradient(135deg, var(--surface), var(--surface-2));
+    border: 1px solid var(--line); border-radius: 22px; padding: 34px;
+    display:grid; grid-template-columns: 1.1fr 1fr; gap: 30px; align-items:center;
+    box-shadow: var(--shadow); position: relative; overflow:hidden;
+  }
+  .featured::after{
+    content:""; position:absolute; right:-60px; top:-60px; width:220px; height:220px;
+    background: radial-gradient(circle, var(--accent-soft), transparent 70%); pointer-events:none;
+  }
+  .badge{
+    display:inline-flex; align-items:center; gap:6px; padding: 5px 12px; border-radius: 999px;
+    font-family:'JetBrains Mono',monospace; font-size:.72rem; font-weight:600; letter-spacing:.03em; text-transform:uppercase;
+  }
+  .badge.top{ background: var(--good-soft); color: var(--good); }
+  .badge.mid{ background: var(--warn-soft); color: var(--warn); }
+  .badge.low{ background: var(--bad-soft); color: var(--bad); }
+
+  .featured .city{ font-size: 2rem; font-weight: 800; margin-top: 14px; }
+  .featured .desc{ color: var(--ink-soft); margin-top: 8px; font-size: .96rem; }
+  .featured .cta{
+    margin-top: 22px; display:inline-flex; align-items:center; gap:8px;
+    background: var(--accent); color: var(--accent-ink); text-decoration:none;
+    padding: 11px 20px; border-radius: 12px; font-weight:600; font-size:.92rem;
+    transition: transform .15s ease, box-shadow .15s ease;
+  }
+  .featured .cta:hover{ transform: translateY(-2px); box-shadow: 0 10px 22px -8px var(--accent); }
+  .featured .cta.disabled{ background: var(--surface-2); color: var(--ink-faint); pointer-events:none; }
+
+  .score-ring-wrap{ display:flex; justify-content:center; align-items:center; flex-direction:column; gap:6px; }
+  .score-num{ font-family:'Sora',sans-serif; font-size: 3.2rem; font-weight: 800; line-height:1; }
+  .score-max{ color: var(--ink-faint); font-size:.85rem; }
+  .figs{ margin-top: 22px; display:grid; grid-template-columns: repeat(2,1fr); gap: 14px 20px; }
+  .fig-l{ font-size:.72rem; color: var(--ink-faint); text-transform:uppercase; letter-spacing:.04em; }
+  .fig-v{ font-size: 1.02rem; font-weight:600; margin-top:3px; }
+
+  /* ---------- LIST ---------- */
+  .list-toolbar{ display:flex; justify-content:flex-end; margin-bottom: 14px; }
+  .toggle-btn{
+    background:none; border:1px solid var(--line); color: var(--ink-soft); border-radius: 10px;
+    padding: 8px 16px; font-size:.86rem; cursor:pointer; transition: background .15s, color .15s;
+  }
+  .toggle-btn:hover{ background: var(--surface-2); color: var(--ink); }
+
+  .row-list{ display:flex; flex-direction:column; gap: 10px; }
+  .listing{
+    display:grid; grid-template-columns: 2.4fr 1fr 1fr 0.9fr 1.1fr auto;
+    align-items:center; gap: 14px;
+    background: var(--surface); border:1px solid var(--line); border-radius: 14px;
+    padding: 15px 18px; transition: transform .15s ease, box-shadow .15s ease;
+  }
+  .listing:hover{ transform: translateY(-1px); box-shadow: var(--shadow); }
+  .listing .city-cell{ font-weight:600; }
+  .listing .rank{ font-family:'JetBrains Mono',monospace; font-size:.72rem; color: var(--ink-faint); margin-right: 8px; }
+  .listing .cell-l{ display:block; font-size:.66rem; color: var(--ink-faint); text-transform:uppercase; letter-spacing:.03em; margin-bottom:2px; }
+  .pdf-link{
+    display:inline-flex; align-items:center; gap:6px; font-size:.82rem; color: var(--accent); text-decoration:none; font-weight:600;
+    white-space:nowrap;
+  }
+  .pdf-link svg{ width:14px; height:14px; }
+  .pdf-link.disabled{ color: var(--ink-faint); pointer-events:none; }
+
+  .hidden-row{ display:none; }
+
+  @media (max-width: 780px){
+    .featured{ grid-template-columns: 1fr; }
+    .listing{ grid-template-columns: 1fr 1fr; row-gap: 10px; }
+    .listing .cell-status, .listing .cell-pdf{ grid-column: span 2; }
+  }
+
+  /* ---------- PROCESS ---------- */
+  .flow{ display:flex; flex-direction:column; gap: 0; }
+  .flow-step{
+    display:grid; grid-template-columns: 56px 1fr; gap: 20px; position: relative; padding-bottom: 40px;
+  }
+  .flow-step:last-child{ padding-bottom:0; }
+  .flow-step::before{
+    content:""; position:absolute; left: 27px; top: 56px; bottom: -4px; width:2px;
+    background: var(--line);
+  }
+  .flow-step:last-child::before{ display:none; }
+  .icon-badge{
+    width:56px; height:56px; border-radius: 16px; background: var(--surface); border: 1px solid var(--line);
+    display:flex; align-items:center; justify-content:center; box-shadow: var(--shadow); flex-shrink:0;
+    color: var(--accent);
+  }
+  .icon-badge svg{ width:26px; height:26px; }
+  .flow-step h3{ font-size: 1.2rem; font-weight:700; }
+  .flow-step p{ color: var(--ink-soft); margin-top:6px; max-width: 54ch; font-size:.98rem; }
+  .flow-step .step-n{ font-family:'JetBrains Mono',monospace; font-size:.72rem; color: var(--ink-faint); margin-bottom: 4px; display:block; }
+
+  /* ---------- FOOTER ---------- */
+  footer{ padding: 48px 0 72px; border-top: 1px solid var(--line); text-align:center; }
+  footer p{ color: var(--ink-faint); font-size:.86rem; max-width: 48ch; margin: 0 auto; }
+  footer .updated{ font-family:'JetBrains Mono',monospace; font-size:.78rem; color: var(--ink-soft); margin-bottom:10px; }
+</style>
+</head>
+<body>
+
+<nav>
+  <div class="wrap">
+    <div class="brand"><span class="dot"></span>Radar Działek</div>
+    <div class="live"><span class="pulse"></span>aktualizowane automatycznie</div>
+  </div>
+</nav>
+
+<div class="wrap">
+  <section class="hero">
+    <div class="eyebrow reveal">Automat do szukania działek</div>
+    <h1 class="reveal">Sam znajduje i ocenia działki pod Gdańskiem</h1>
+    <p class="lede reveal">Codziennie przegląda ogłoszenia, sprawdza je w urzędowych rejestrach, liczy realny czas dojazdu i wystawia jedną, prostą ocenę — zanim ja w ogóle zdążę otworzyć Otodom.</p>
+    <div class="stat-row" id="statRow"></div>
+  </section>
+</div>
+
+<div class="wrap">
+  <section id="wyniki">
+    <div class="section-head reveal">
+      <div>
+        <h2>Wyniki</h2>
+        <p>Skrócony podgląd. Pełna analiza każdej działki czeka w osobnym raporcie PDF.</p>
+      </div>
+    </div>
+
+    <div id="loadingArea" class="loading-msg reveal" style="display:none;">
+      <div class="loader"></div>
+      <p>Ładuję dane...</p>
+    </div>
+
+    <div class="featured reveal" id="featured" style="display:none;"></div>
+
+    <div style="height:36px;"></div>
+
+    <div class="list-toolbar reveal">
+      <button class="toggle-btn" id="toggleAll" style="display:none;">Pokaż wszystkie działki</button>
+    </div>
+    <div class="row-list" id="rowList"></div>
+  </section>
+</div>
+
+<div class="wrap">
+  <section id="jak-to-dziala">
+    <div class="section-head reveal">
+      <div>
+        <h2>Jak to działa</h2>
+        <p>Pięć kroków, w pełni bez mojego udziału — od nowego ogłoszenia do gotowej oceny.</p>
+      </div>
+    </div>
+    <div class="flow" id="flow"></div>
+  </section>
+</div>
+
+<footer>
+  <div class="wrap">
+    <div class="updated reveal" id="updatedLine"></div>
+    <p class="reveal">Działa w tle, bez mojego udziału — ta strona pokazuje tylko efekt.</p>
+  </div>
+</footer>
+
+<script>
+
+const N8N_WEBHOOK_URL = "https://getdropped.app.n8n.cloud/webhook/fd66def7-899d-49ba-9e68-719712491917"; 
+
+const CITY_NAMES = {
+  "przyjazn":"Przyjaźń","lisewiec":"Lisewiec","czapielsk":"Czapielsk","lapino-kartuskie":"Łapino Kartuskie",
+  "ostaszewo":"Ostaszewo","lezno":"Łężno","banino":"Banino","zukowo":"Żukowo","dobrzewino":"Dobrzewino",
+  "widlino":"Widlino","malkowo":"Małkowo","milocin_28357":"Miłocin","lapino":"Łapino","pepowo_9449":"Pępowo",
+  "drewnica":"Drewnica","cieplewo":"Cieplewo","niestepowo":"Niestępowo"
+};
+
+// Fallback data (ostatni znany stan)
+const RAW = [
+["68350141","https://www.otodom.pl/pl/oferta/dzialka-przyjazn-otomino-w-dobrej-cenie-z-mpzp-ID4CMZD",157560,808,"przyjazn",67.9,"ODRZUCENIE"],
+["68336931","https://www.otodom.pl/pl/oferta/pnb-dzialka-z-projektem-przyjazn-700m2-ID4CJyz",199999,700,"przyjazn",48.9,"ODRZUCENIE"],
+["68352704","https://www.otodom.pl/pl/oferta/malownicza-dzialka-bud-mpzp-szybki-dojazd-do-3miasta-plaska-ID4CNEY",179000,1016,"lisewiec",80.2,"MOŻLIWA"],
+["68336241","https://www.otodom.pl/pl/oferta/dzialka-pod-zabudowe-jednorodzinna-w-czapielsku-blisko-do-jeziora-ID4CJnr",199000,1050,"czapielsk",76.1,"ODRZUCENIE"],
+["68351711","https://www.otodom.pl/pl/oferta/swieza-dostawa-dzialek-w-dobrej-cenie-ID4CNoX",250000,1000,"przyjazn",38.3,"ODRZUCENIE"],
+["68320580","https://www.otodom.pl/pl/oferta/nowa-dostawa-atrakcyjnych-dzialek-przy-jeziornej-ID4CFiQ",211500,900,"przyjazn",35.6,"ODRZUCENIE"],
+["68297365","https://www.otodom.pl/pl/oferta/dzialka-budowlana-z-wz-ID4Czgp",175000,1000,"lapino-kartuskie",79,"ODRZUCENIE"],
+["68298576","https://www.otodom.pl/pl/oferta/dzialka-z-pnb-przyjazn-ID4CzzV",250000,904,"przyjazn",36,"ODRZUCENIE"],
+["68275580","https://www.otodom.pl/pl/oferta/dzialka-aktualnymi-wz-ostaszewo-800-m2-ID4CtB2",139000,800,"ostaszewo",37.5,"ODRZUCENIE"],
+["68312607","https://www.otodom.pl/pl/oferta/swietna-cena-dzialka-996-m-z-wz-ID4CDef",155000,996,"lezno",96.1,"TOP REKOMENDACJA"]
+];
+
+const FALLBACK_DATA = RAW.map(r => ({
+  id:r[0], url:r[1], price:r[2], area:r[3], city: CITY_NAMES[r[4]] || r[4],
+  score:r[5], status:r[6], pdfUrl: null, dateProcessed: null
+})).sort((a,b) => b.score - a.score);
+
+async function loadData(){
+  if(!N8N_WEBHOOK_URL){
+    console.warn("N8N_WEBHOOK_URL nie jest ustawiony — używam fallback'u");
+    return { data: FALLBACK_DATA, lastUpdated: "dane offline" };
+  }
+
+  try{
+    const res = await fetch(N8N_WEBHOOK_URL);
+    if(!res.ok) throw new Error(`HTTP ${res.status}`);
+    const json = await res.json();
+
+    // Sortuj po score descending
+    const sorted = (json.data || []).sort((a,b) => b.score - a.score);
+
+    return {
+      data: sorted,
+      lastUpdated: json.lastUpdated || new Date().toLocaleString('pl-PL')
+    };
+  }catch(err){
+    console.error("Błąd ładowania danych z webhooka:", err);
+    return { data: FALLBACK_DATA, lastUpdated: "dane offline (ostatnia znana)" };
+  }
+}
+
+function plnFmt(n){ return n.toLocaleString('pl-PL') + ' zł'; }
+function m2Fmt(n){ return n.toLocaleString('pl-PL') + ' m²'; }
+function statusClass(s){
+  if(s === "TOP REKOMENDACJA") return "top";
+  if(s === "MOŻLIWA") return "mid";
+  return "low";
+}
+function statusLabel(s){
+  if(s === "TOP REKOMENDACJA") return "Polecana";
+  if(s === "MOŻLIWA") return "Możliwa";
+  return "Odrzucona";
+}
+const pdfIcon = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/></svg>`;
+
+function animateCount(el, target, suffix){
+  const dur = 900, start = performance.now();
+  const isFloat = target % 1 !== 0;
+  function tick(now){
+    const p = Math.min(1, (now - start) / dur);
+    const eased = 1 - Math.pow(1 - p, 3);
+    const val = target * eased;
+    el.textContent = (isFloat ? val.toFixed(1) : Math.round(val)).toLocaleString('pl-PL') + (suffix||'');
+    if(p < 1) requestAnimationFrame(tick);
+  }
+  requestAnimationFrame(tick);
+}
+
+function render(data, lastUpdated){
+  const loading = document.getElementById('loadingArea');
+  const featured = document.getElementById('featured');
+  const statRow = document.getElementById('statRow');
+  const rowList = document.getElementById('rowList');
+  const toggleBtn = document.getElementById('toggleAll');
+
+  // Ukryj loading
+  if(loading) loading.style.display = 'none';
+
+  if(!data || data.length === 0){
+    featured.innerHTML = `<p style="grid-column:1/-1;">Brak danych do wyświetlenia. Spróbuj ponownie za chwilę.</p>`;
+    featured.style.display = 'block';
+    return;
+  }
+
+  const total = data.length;
+  const recommended = data.filter(d => d.status !== "ODRZUCENIE").length;
+  const cities = new Set(data.map(d => d.city)).size;
+  const top = data[0];
+
+  // stats
+  const stats = [
+    {n: total, l: "przeanalizowanych ogłoszeń"},
+    {n: cities, l: "miejscowości pod lupą"},
+    {n: recommended, l: "wartych bliższego spojrzenia"},
+    {n: top.score, l: "najwyższa ocena (100 max)"}
+  ];
+  statRow.innerHTML = stats.map(s => `
+    <div class="stat reveal"><div class="n mono" data-target="${s.n}">0</div><div class="l">${s.l}</div></div>
+  `).join('');
+
+  // featured (top pick)
+  featured.innerHTML = `
+    <div>
+      <span class="badge ${statusClass(top.status)}">Najwyżej oceniona</span>
+      <div class="city">${top.city}</div>
+      <p class="desc">Działka ${m2Fmt(top.area)} za ${plnFmt(top.price)} — obecny lider rankingu w tym przebiegu.</p>
+      ${top.pdfUrl
+        ? `<a class="cta" href="${top.pdfUrl}" target="_blank" rel="noopener">${pdfIcon} Pobierz raport PDF</a>`
+        : `<a class="cta disabled">${pdfIcon} Raport PDF w przygotowaniu</a>`}
+    </div>
+    <div class="score-ring-wrap">
+      <div class="score-num mono">${top.score.toLocaleString('pl-PL')}</div>
+      <div class="score-max">/ 100 pkt</div>
+      <div class="figs">
+        <div><span class="fig-l">Cena</span><span class="fig-v mono">${plnFmt(top.price)}</span></div>
+        <div><span class="fig-l">Powierzchnia</span><span class="fig-v mono">${m2Fmt(top.area)}</span></div>
+      </div>
+    </div>
+  `;
+  featured.style.display = 'grid';
+
+  // list
+  const rest = data.slice(1);
+  const visibleCount = 6;
+  rowList.innerHTML = rest.map((d,i) => `
+    <div class="listing ${i >= visibleCount ? 'hidden-row' : ''}">
+      <div class="city-cell"><span class="rank">#${i+2}</span>${d.city}</div>
+      <div><span class="cell-l">Cena</span><span class="mono">${plnFmt(d.price)}</span></div>
+      <div><span class="cell-l">Powierzchnia</span><span class="mono">${m2Fmt(d.area)}</span></div>
+      <div><span class="cell-l">Ocena</span><span class="mono">${d.score.toLocaleString('pl-PL')}</span></div>
+      <div class="cell-status"><span class="badge ${statusClass(d.status)}">${statusLabel(d.status)}</span></div>
+      <div class="cell-pdf">${d.pdfUrl
+        ? `<a class="pdf-link" href="${d.pdfUrl}" target="_blank" rel="noopener">${pdfIcon} Raport</a>`
+        : `<span class="pdf-link disabled">${pdfIcon} Raport</span>`}</div>
+    </div>
+  `).join('');
+
+  if(rest.length <= visibleCount){ toggleBtn.style.display = 'none'; }
+  else{
+    toggleBtn.style.display = 'inline-block';
+    let expanded = false;
+    toggleBtn.addEventListener('click', () => {
+      expanded = !expanded;
+      rowList.querySelectorAll('.hidden-row').forEach(r => r.style.display = expanded ? 'grid' : 'none');
+      toggleBtn.textContent = expanded ? 'Pokaż mniej' : `Pokaż wszystkie działki (${data.length})`;
+    });
+    toggleBtn.textContent = `Pokaż wszystkie działki (${data.length})`;
+  }
+
+  document.getElementById('updatedLine').textContent = `Ostatnia aktualizacja: ${lastUpdated}`;
+
+  // animate counters once visible
+  const io1 = new IntersectionObserver((entries) => {
+    entries.forEach(e => {
+      if(e.isIntersecting){
+        e.target.querySelectorAll('.stat .n').forEach(el => animateCount(el, parseFloat(el.dataset.target)));
+        io1.disconnect();
+      }
+    });
+  }, {threshold:.4});
+  io1.observe(statRow);
+}
+
+// ---- process steps ----
+const ICONS = {
+  search: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/></svg>`,
+  registry: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 12l2 2 4-4"/><rect x="3" y="4" width="18" height="17" rx="2"/><path d="M3 9h18"/></svg>`,
+  route: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="6" cy="19" r="2"/><circle cx="18" cy="5" r="2"/><path d="M8 19h7a4 4 0 0 0 4-4v-1a4 4 0 0 0-4-4H9a4 4 0 0 1-4-4v-1"/></svg>`,
+  read: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12s4-7 10-7 10 7 10 7-4 7-10 7-10-7-10-7z"/><circle cx="12" cy="12" r="3"/></svg>`,
+  score: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 15a6 6 0 1 0 0-12 6 6 0 0 0 0 12z"/><path d="M8.5 14.5L7 22l5-3 5 3-1.5-7.5"/></svg>`
+};
+const STEPS = [
+  {icon:"search", t:"Szuka nowych ogłoszeń", d:"Codziennie przegląda ogłoszenia w promieniu 10 km od Gdańska i zapamiętuje tylko te, których jeszcze nie widział — żadnych duplikatów."},
+  {icon:"registry", t:"Sprawdza, czy działka naprawdę istnieje", d:"Numer działki trafia do oficjalnego rejestru gruntów. Jeśli ogłoszenie go nie podaje, automat odczytuje go wprost ze zdjęć."},
+  {icon:"route", t:"Liczy realny czas dojazdu", d:"Sprawdza, ile faktycznie zajmie droga do Gdańska — samochodem w godzinach szczytu i poza nim, a także komunikacją miejską."},
+  {icon:"read", t:"Czyta opis jak człowiek", d:"Wyłapuje z treści ogłoszenia to, co najważniejsze: plan zagospodarowania, dostęp do drogi, uzbrojenie terenu."},
+  {icon:"score", t:"Wystawia ocenę i raport", d:"Na końcu liczy jeden, prosty wynik od 0 do 100 i przygotowuje gotowy raport PDF z pełnym uzasadnieniem."}
+];
+document.getElementById('flow').innerHTML = STEPS.map((s,i) => `
+  <div class="flow-step reveal">
+    <div class="icon-badge">${ICONS[s.icon]}</div>
+    <div>
+      <span class="step-n">KROK ${i+1}/${STEPS.length}</span>
+      <h3>${s.t}</h3>
+      <p>${s.d}</p>
+    </div>
+  </div>
+`).join('');
+
+// ---- boot ----
+(async () => {
+  document.getElementById('loadingArea').style.display = 'block';
+  const { data, lastUpdated } = await loadData();
+  render(data, lastUpdated);
+})();
+
+// ---- scroll reveal ----
+const io = new IntersectionObserver((entries) => {
+  entries.forEach(e => { if(e.isIntersecting){ e.target.classList.add('in'); io.unobserve(e.target); } });
+}, {threshold:.12});
+function observeReveals(){ document.querySelectorAll('.reveal:not(.in)').forEach(el => io.observe(el)); }
+observeReveals();
+new MutationObserver(observeReveals).observe(document.body, {childList:true, subtree:true});
+</script>
+</body>
+</html>
