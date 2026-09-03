@@ -287,55 +287,55 @@
 
 <script>
 
-const N8N_WEBHOOK_URL = "https://getdropped.app.n8n.cloud/webhook/fd66def7-899d-49ba-9e68-719712491917" 
-
-const CITY_NAMES = {
-  "przyjazn":"Przyjaźń","lisewiec":"Lisewiec","czapielsk":"Czapielsk","lapino-kartuskie":"Łapino Kartuskie",
-  "ostaszewo":"Ostaszewo","lezno":"Łężno","banino":"Banino","zukowo":"Żukowo","dobrzewino":"Dobrzewino",
-  "widlino":"Widlino","malkowo":"Małkowo","milocin_28357":"Miłocin","lapino":"Łapino","pepowo_9449":"Pępowo",
-  "drewnica":"Drewnica","cieplewo":"Cieplewo","niestepowo":"Niestępowo"
-};
-
-// Fallback data (ostatni znany stan)
-const RAW = [
-["68350141","https://www.otodom.pl/pl/oferta/dzialka-przyjazn-otomino-w-dobrej-cenie-z-mpzp-ID4CMZD",157560,808,"przyjazn",67.9,"ODRZUCENIE"],
-["68336931","https://www.otodom.pl/pl/oferta/pnb-dzialka-z-projektem-przyjazn-700m2-ID4CJyz",199999,700,"przyjazn",48.9,"ODRZUCENIE"],
-["68352704","https://www.otodom.pl/pl/oferta/malownicza-dzialka-bud-mpzp-szybki-dojazd-do-3miasta-plaska-ID4CNEY",179000,1016,"lisewiec",80.2,"MOŻLIWA"],
-["68336241","https://www.otodom.pl/pl/oferta/dzialka-pod-zabudowe-jednorodzinna-w-czapielsku-blisko-do-jeziora-ID4CJnr",199000,1050,"czapielsk",76.1,"ODRZUCENIE"],
-["68351711","https://www.otodom.pl/pl/oferta/swieza-dostawa-dzialek-w-dobrej-cenie-ID4CNoX",250000,1000,"przyjazn",38.3,"ODRZUCENIE"],
-["68320580","https://www.otodom.pl/pl/oferta/nowa-dostawa-atrakcyjnych-dzialek-przy-jeziornej-ID4CFiQ",211500,900,"przyjazn",35.6,"ODRZUCENIE"],
-["68297365","https://www.otodom.pl/pl/oferta/dzialka-budowlana-z-wz-ID4Czgp",175000,1000,"lapino-kartuskie",79,"ODRZUCENIE"],
-["68298576","https://www.otodom.pl/pl/oferta/dzialka-z-pnb-przyjazn-ID4CzzV",250000,904,"przyjazn",36,"ODRZUCENIE"],
-["68275580","https://www.otodom.pl/pl/oferta/dzialka-aktualnymi-wz-ostaszewo-800-m2-ID4CtB2",139000,800,"ostaszewo",37.5,"ODRZUCENIE"],
-["68312607","https://www.otodom.pl/pl/oferta/swietna-cena-dzialka-996-m-z-wz-ID4CDef",155000,996,"lezno",96.1,"TOP REKOMENDACJA"]
-];
-
-const FALLBACK_DATA = RAW.map(r => ({
-  id:r[0], url:r[1], price:r[2], area:r[3], city: CITY_NAMES[r[4]] || r[4],
-  score:r[5], status:r[6], pdfUrl: null, dateProcessed: null
-})).sort((a,b) => b.score - a.score);
+// Google Sheets ID i CSV export
+const SHEETS_ID = "1z5A9xhT_0JSR_48rYz80cOHZ8ehQQ-f2aRsuxAbhh2U";
+const SHEETS_CSV_URL = `https://docs.google.com/spreadsheets/d/${SHEETS_ID}/export?format=csv`;
 
 async function loadData(){
-  if(!N8N_WEBHOOK_URL){
-    console.warn("N8N_WEBHOOK_URL nie jest ustawiony — używam fallback'u");
-    return { data: FALLBACK_DATA, lastUpdated: "dane offline" };
-  }
-
   try{
-    const res = await fetch(N8N_WEBHOOK_URL);
+    // Pobierz CSV z Google Sheets
+    const res = await fetch(SHEETS_CSV_URL);
     if(!res.ok) throw new Error(`HTTP ${res.status}`);
-    const json = await res.json();
+    const csv = await res.text();
+
+    // Parsuj CSV
+    const lines = csv.trim().split('\n');
+    if(lines.length < 2) throw new Error("Pusty Sheet");
+
+    const headers = lines[0].split(',').map(h => h.trim());
+    const data = [];
+
+    for(let i = 1; i < lines.length; i++){
+      const cells = lines[i].split(',').map(c => c.trim());
+      const row = {};
+      headers.forEach((h, idx) => row[h] = cells[idx] || '');
+
+      // Mapuj kolumny ze Sheets na format strony
+      const item = {
+        id: row.listing_id || row.canonical_id || '',
+        url: row.property_url || '',
+        price: parseInt(row.price) || 0,
+        area: parseInt(row.area_m2) || 0,
+        city: row.city || '?',
+        score: Math.round(parseFloat(row.total_score || 0) * 10) / 10,
+        status: row.status || 'ODRZUCENIE',
+        pdfUrl: row.pdf_link || null,
+        dateProcessed: row.date_processed || null
+      };
+
+      if(item.id && item.price > 0) data.push(item);
+    }
 
     // Sortuj po score descending
-    const sorted = (json.data || []).sort((a,b) => b.score - a.score);
+    const sorted = data.sort((a,b) => b.score - a.score);
 
     return {
       data: sorted,
-      lastUpdated: json.lastUpdated || new Date().toLocaleString('pl-PL')
+      lastUpdated: new Date().toLocaleString('pl-PL')
     };
   }catch(err){
-    console.error("Błąd ładowania danych z webhooka:", err);
-    return { data: FALLBACK_DATA, lastUpdated: "dane offline (ostatnia znana)" };
+    console.error("Błąd ładowania Sheets:", err);
+    return { data: [], lastUpdated: "błąd ładowania" };
   }
 }
 
