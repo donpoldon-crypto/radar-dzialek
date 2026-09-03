@@ -306,20 +306,24 @@ async function loadData(){
     const data = [];
 
     for(let i = 1; i < lines.length; i++){
+      // Parsuj CSV — każdy przecinek separator, ale ZASTĄP POLSKIE PRZECINKI W LICZBACH
       const cells = lines[i].split(',').map(c => c.trim());
       const row = {};
       headers.forEach((h, idx) => row[h] = cells[idx] || '');
 
       // Mapuj kolumny ze Sheets na format strony
-      // Obsługuje obie karty: Raw Listings (total_score) i Canonical Dzialki (best_total_score)
-      const scoreStr = (row.best_total_score || row.total_score || '0').toString().replace(',', '.');
+     
+      const totalScoreRaw = row.best_total_score || row.total_score || '0';
+      const scoreStr = totalScoreRaw.replace(/['"]/g, '').replace(',', '.'); // usuń cudzysłowy i zamień przecinek
+      const scoreValue = parseFloat(scoreStr) || 0;
+
       const item = {
         id: row.listing_id || row.canonical_id || '',
         url: row.property_url || '',
         price: parseInt(row.price) || 0,
         area: parseInt(row.area_m2) || 0,
         city: row.city || '?',
-        score: Math.round(parseFloat(scoreStr) * 10) / 10,
+        score: Math.round(scoreValue * 10) / 10,
         status: row.status || 'ODRZUCENIE',
         pdfUrl: row.pdf_link || null,
         dateProcessed: row.date_processed || null
