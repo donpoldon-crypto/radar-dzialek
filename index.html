@@ -311,13 +311,14 @@ async function loadData(){
       headers.forEach((h, idx) => row[h] = cells[idx] || '');
 
       // Mapuj kolumny ze Sheets na format strony
+      // Obsługuje obie karty: Raw Listings (total_score) i Canonical Dzialki (best_total_score)
       const item = {
         id: row.listing_id || row.canonical_id || '',
         url: row.property_url || '',
         price: parseInt(row.price) || 0,
         area: parseInt(row.area_m2) || 0,
         city: row.city || '?',
-        score: Math.round(parseFloat(row.total_score || 0) * 10) / 10,
+        score: Math.round(parseFloat(row.best_total_score || row.total_score || 0) * 10) / 10,
         status: row.status || 'ODRZUCENIE',
         pdfUrl: row.pdf_link || null,
         dateProcessed: row.date_processed || null
