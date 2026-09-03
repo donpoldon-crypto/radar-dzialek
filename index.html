@@ -310,23 +310,16 @@ async function loadData(){
       const row = {};
       headers.forEach((h, idx) => row[h] = cells[idx] || '');
 
-      // DEBUG: pokaż co się czyta z CSV
-      if(i === 1){
-        console.log('📊 CSV Headers:', headers);
-        console.log('📊 First row raw:', row);
-        console.log('📊 total_score value:', row.total_score);
-        console.log('📊 best_total_score value:', row.best_total_score);
-      }
-
       // Mapuj kolumny ze Sheets na format strony
       // Obsługuje obie karty: Raw Listings (total_score) i Canonical Dzialki (best_total_score)
+      const scoreStr = (row.best_total_score || row.total_score || '0').toString().replace(',', '.');
       const item = {
         id: row.listing_id || row.canonical_id || '',
         url: row.property_url || '',
         price: parseInt(row.price) || 0,
         area: parseInt(row.area_m2) || 0,
         city: row.city || '?',
-        score: Math.round(parseFloat(row.best_total_score || row.total_score || 0) * 10) / 10,
+        score: Math.round(parseFloat(scoreStr) * 10) / 10,
         status: row.status || 'ODRZUCENIE',
         pdfUrl: row.pdf_link || null,
         dateProcessed: row.date_processed || null
