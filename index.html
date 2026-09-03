@@ -291,6 +291,36 @@
 const SHEETS_ID = "1z5A9xhT_0JSR_48rYz80cOHZ8ehQQ-f2aRsuxAbhh2U";
 const SHEETS_CSV_URL = `https://docs.google.com/spreadsheets/d/${SHEETS_ID}/export?format=csv`;
 
+// Poprawny parser CSV — respektuje pola w cudzysłowie (Sheets owija w "..."
+// każde pole zawierające przecinek, np. wynik w polskiej notacji "85,00" albo
+// tytuł ogłoszenia z przecinkiem). Naiwny split(',') łamał się na takich
+// polach i przesuwał WSZYSTKIE kolejne kolumny o jedno miejsce — przez co
+// pdf_link kończył pod spodem z wartością z zupełnie innej kolumny (np. daty).
+function parseCSV(text){
+  const rows = [];
+  let row = [], cell = '', inQuotes = false;
+  for(let i = 0; i < text.length; i++){
+    const c = text[i];
+    if(inQuotes){
+      if(c === '"'){
+        if(text[i+1] === '"'){ cell += '"'; i++; }
+        else{ inQuotes = false; }
+      } else {
+        cell += c;
+      }
+    } else {
+      if(c === '"'){ inQuotes = true; }
+      else if(c === ','){ row.push(cell); cell = ''; }
+      else if(c === '\r'){ /* skip */ }
+      else if(c === '\n'){ row.push(cell); rows.push(row); row = []; cell = ''; }
+      else{ cell += c; }
+    }
+  }
+  // ostatnia komórka/wiersz (plik może nie kończyć się \n)
+  if(cell.length > 0 || row.length > 0){ row.push(cell); rows.push(row); }
+  return rows;
+}
+
 async function loadData(){
   try{
     // Pobierz CSV z Google Sheets
@@ -298,21 +328,21 @@ async function loadData(){
     if(!res.ok) throw new Error(`HTTP ${res.status}`);
     const csv = await res.text();
 
-    // Parsuj CSV
-    const lines = csv.trim().split('\n');
-    if(lines.length < 2) throw new Error("Pusty Sheet");
+    // Parsuj CSV (poprawnie, z obsługą cudzysłowów)
+    const rows = parseCSV(csv.trim());
+    if(rows.length < 2) throw new Error("Pusty Sheet");
 
-    const headers = lines[0].split(',').map(h => h.trim());
+    const headers = rows[0].map(h => h.trim());
     const data = [];
 
-    for(let i = 1; i < lines.length; i++){
-      // Parsuj CSV — każdy przecinek separator, ale ZASTĄP POLSKIE PRZECINKI W LICZBACH
-      const cells = lines[i].split(',').map(c => c.trim());
+    for(let i = 1; i < rows.length; i++){
+      const cells = rows[i].map(c => c.trim());
       const row = {};
       headers.forEach((h, idx) => row[h] = cells[idx] || '');
 
       // Mapuj kolumny ze Sheets na format strony
-     
+      // Obsługuje obie karty: Raw Listings (total_score) i Canonical Dzialki (best_total_score)
+      // WAŻNE: Google Sheets eksportuje liczby w polskiej notacji (przecinek jako separator)
       const totalScoreRaw = row.best_total_score || row.total_score || '0';
       const scoreStr = totalScoreRaw.replace(/['"]/g, '').replace(',', '.'); // usuń cudzysłowy i zamień przecinek
       const scoreValue = parseFloat(scoreStr) || 0;
