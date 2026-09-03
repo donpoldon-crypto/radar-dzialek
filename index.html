@@ -310,6 +310,14 @@ async function loadData(){
       const row = {};
       headers.forEach((h, idx) => row[h] = cells[idx] || '');
 
+      // DEBUG: pokaż co się czyta z CSV
+      if(i === 1){
+        console.log('📊 CSV Headers:', headers);
+        console.log('📊 First row raw:', row);
+        console.log('📊 total_score value:', row.total_score);
+        console.log('📊 best_total_score value:', row.best_total_score);
+      }
+
       // Mapuj kolumny ze Sheets na format strony
       // Obsługuje obie karty: Raw Listings (total_score) i Canonical Dzialki (best_total_score)
       const item = {
